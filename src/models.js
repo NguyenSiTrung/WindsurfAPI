@@ -311,7 +311,7 @@ export function getModelKeysByEnum(enumValue) {
 
 // ─── Tier access ───────────────────────────────────────────
 
-const FREE_TIER_BASE = ['gemini-2.5-flash'];
+const FREE_TIER_BASE = ['gemini-2.5-flash', 'swe-1.6', 'swe-1.6-fast', 'kimi-k2.5'];
 const _discoveredFreeModels = new Set();
 
 export function registerDiscoveredFreeModel(key) {
