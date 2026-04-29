@@ -962,6 +962,13 @@ export async function handleChatCompletions(body, context = {}) {
   const hasTools = Array.isArray(tools) && tools.length > 0;
   const hasToolHistory = Array.isArray(messages) && messages.some(m => m?.role === 'tool' || (m?.role === 'assistant' && Array.isArray(m.tool_calls) && m.tool_calls.length));
   const emulateTools = useCascade && (hasTools || hasToolHistory);
+  
+  // Extract valid tool names to prevent false positives in bare JSON parsing
+  const validToolNames = hasTools ? new Set(
+    (tools || [])
+      .filter(t => t?.type === 'function' && t?.function?.name)
+      .map(t => t.function.name)
+  ) : null;
   // Build proto-level preamble (goes into tool_calling_section override).
   // Also inject into the last user message as fallback — some models in
   // NO_TOOL mode ignore the SectionOverride entirely and refuse to call
@@ -1406,7 +1413,7 @@ async function nonStreamResponse(client, id, created, model, modelKey, messages,
       };
       serverUsage = chunks.usage || null;
       if (emulateTools) {
-        const parsed = parseToolCallsFromText(allText);
+        const parsed = parseToolCallsFromText(allText, validToolNames);
         allText = parsed.text;
         toolCalls = parsed.toolCalls;
       } else {
@@ -1691,7 +1698,12 @@ function streamResponse(id, created, model, modelKey, messages, cascadeMessages,
       // e.g. a half-read `<tool_call>` tag — can't corrupt the next
       // account's stream. `let` bindings so the retry loop below can
       // reassign.
-      let toolParser = useCascade ? new ToolCallStreamParser({ parseBareJson: emulateTools, parseToolCode: emulateTools }) : null;
+      
+      let toolParser = useCascade ? new ToolCallStreamParser({ 
+        parseBareJson: emulateTools, 
+        parseToolCode: emulateTools,
+        validToolNames
+      }) : null;
       const collectedToolCalls = [];
 
       // Streaming path sanitizers. Every text/thinking delta flows through a
@@ -1792,7 +1804,7 @@ function streamResponse(id, created, model, modelKey, messages, cascadeMessages,
           // retry. Skip on attempt 0 — already fresh. hadSuccess=true
           // means we already emitted content so no retry happens anyway.
           if (attempt > 0 && !hadSuccess) {
-            if (useCascade) toolParser = new ToolCallStreamParser({ parseBareJson: emulateTools, parseToolCode: emulateTools });
+            if (useCascade) toolParser = new ToolCallStreamParser({ parseBareJson: emulateTools, parseToolCode: emulateTools, validToolNames });
             pathStreamText = new PathSanitizeStream();
             pathStreamThinking = new PathSanitizeStream();
           }

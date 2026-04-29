@@ -550,6 +550,7 @@ export class ToolCallStreamParser {
     this._totalSeen = 0;
     this.parseToolCode = options.parseToolCode !== false;
     this.parseBareJson = options.parseBareJson !== false;
+    this.validToolNames = options.validToolNames || null;
   }
 
   _findClosingBrace() {
@@ -609,6 +610,13 @@ export class ToolCallStreamParser {
   _parseBareToolCallJson(jsonStr) {
     const parsed = safeParseJson(jsonStr);
     if (!parsed || typeof parsed.name !== 'string' || !('arguments' in parsed)) return null;
+    
+    // If validToolNames is provided, only accept tool calls with names that match
+    if (this.validToolNames && !this.validToolNames.has(parsed.name)) {
+      log.debug(`ToolParser: rejected bare json with unknown tool name=${parsed.name}`);
+      return null;
+    }
+    
     const args = parsed.arguments;
     const argsJson = typeof args === 'string' ? args : JSON.stringify(args ?? {});
     log.debug(`ToolParser: matched bare json format, name=${parsed.name}`);
@@ -827,8 +835,8 @@ export class ToolCallStreamParser {
  * Run a complete (non-streamed) text through the parser in one shot.
  * Convenience wrapper for the non-stream response path.
  */
-export function parseToolCallsFromText(text) {
-  const parser = new ToolCallStreamParser();
+export function parseToolCallsFromText(text, validToolNames = null) {
+  const parser = new ToolCallStreamParser({ validToolNames });
   const a = parser.feed(text);
   const b = parser.flush();
   return {

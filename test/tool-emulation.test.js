@@ -113,6 +113,35 @@ describe('ToolCallStreamParser', () => {
     assert.equal(parser.inToolResult, false);
     assert.equal(parser.buffer.length, 0);
   });
+
+  it('filters bare JSON by valid tool names when provided', () => {
+    const validToolNames = new Set(['Read', 'Write', 'Bash']);
+    const parser = new ToolCallStreamParser({ parseBareJson: true, validToolNames });
+    
+    // Valid tool call should be parsed
+    const r1 = parser.feed('{"name":"Read","arguments":{"path":"file.js"}}');
+    assert.equal(r1.toolCalls.length, 1);
+    assert.equal(r1.toolCalls[0].name, 'Read');
+    
+    // Invalid tool name should be treated as text
+    const r2 = parser.feed('{"name":"UnknownTool","arguments":{"message":"hello"}}');
+    assert.equal(r2.toolCalls.length, 0);
+    assert.ok(r2.text.includes('UnknownTool'));
+    
+    // JSON without name field should be treated as text
+    const r3 = parser.feed('{"message":"Hello! How can I help you today?"}');
+    assert.equal(r3.toolCalls.length, 0);
+    assert.ok(r3.text.includes('message'));
+  });
+
+  it('accepts all bare JSON when validToolNames is null', () => {
+    const parser = new ToolCallStreamParser({ parseBareJson: true, validToolNames: null });
+    
+    // Without validToolNames, any JSON with name/arguments should be parsed
+    const r = parser.feed('{"name":"AnyTool","arguments":{"x":1}}');
+    assert.equal(r.toolCalls.length, 1);
+    assert.equal(r.toolCalls[0].name, 'AnyTool');
+  });
 });
 
 describe('parseToolCallsFromText', () => {
@@ -129,6 +158,19 @@ describe('parseToolCallsFromText', () => {
     const { text, toolCalls } = parseToolCallsFromText('Just normal text');
     assert.equal(toolCalls.length, 0);
     assert.equal(text, 'Just normal text');
+  });
+
+  it('filters by valid tool names when provided', () => {
+    const validToolNames = new Set(['Read', 'Write']);
+    const input = '{"name":"Read","arguments":{"path":"x"}} {"name":"UnknownTool","arguments":{"x":1}}';
+    const { text, toolCalls } = parseToolCallsFromText(input, validToolNames);
+    
+    // Only Read should be parsed as a tool call
+    assert.equal(toolCalls.length, 1);
+    assert.equal(toolCalls[0].name, 'Read');
+    
+    // UnknownTool should remain in text
+    assert.ok(text.includes('UnknownTool'));
   });
 });
 
